@@ -4,8 +4,23 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const metadataBase = process.env.NEXT_PUBLIC_APP_URL;
+const FALLBACK_URL = "https://docmind02.vercel.app";
+
+function resolveMetadataBase(): URL {
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!raw) return new URL(FALLBACK_URL);
+  try {
+    return new URL(raw);
+  } catch {
+    console.warn(
+      `[layout] NEXT_PUBLIC_APP_URL is not a valid URL: "${raw}". Falling back to ${FALLBACK_URL}.`
+    );
+    return new URL(FALLBACK_URL);
+  }
+}
+
 export const metadata: Metadata = {
+  metadataBase: resolveMetadataBase(),
   title: {
     default: "DocMind — AI-Powered Document Intelligence",
     template: "%s | DocMind",
@@ -21,21 +36,3 @@ export const metadata: Metadata = {
     "vector search",
   ],
 };
-
-if (metadataBase) {
-  metadata.metadataBase = new URL(metadataBase);
-}
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans`}>
-        <Providers>{children}</Providers>
-      </body>
-    </html>
-  );
-}
