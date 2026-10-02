@@ -2,9 +2,9 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Send, MessageSquare, Plus } from "lucide-react";
+import { Send, MessageSquare, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ConversationRow, MessageRow, CitationSource } from "@/types";
 import type { DocumentRow } from "@/types";
 
-export default function ChatPage() {
+function ChatContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const documentId = searchParams.get("document");
@@ -367,5 +367,19 @@ function MessageBubble({ message }: { message: MessageRow }) {
           )}
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <ChatContent />
+    </Suspense>
   );
 }
