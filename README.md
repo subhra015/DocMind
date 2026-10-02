@@ -162,39 +162,67 @@ stateDiagram-v2
 DocMind/
 ├── src/
 │   ├── app/
+│   │   ├── (auth)/
+│   │   │   ├── login/
+│   │   │   ├── signup/
+│   │   │   ├── reset-password/
+│   │   │   └── verify-email/
 │   │   ├── (dashboard)/
 │   │   │   ├── chat/
+│   │   │   ├── dashboard/
 │   │   │   ├── library/
 │   │   │   └── settings/
+│   │   ├── (marketing)/
 │   │   ├── api/
+│   │   │   ├── auth/callback/
+│   │   │   ├── chat/
 │   │   │   ├── conversations/
 │   │   │   ├── documents/
 │   │   │   ├── health/
 │   │   │   └── inngest/
+│   │   ├── globals.css
 │   │   ├── layout.tsx
-│   │   └── page.tsx
+│   │   └── providers.tsx
 │   ├── components/
+│   │   ├── documents/
+│   │   └── ui/
+│   ├── hooks/
 │   ├── inngest/
 │   │   ├── client.ts
-│   │   └── functions/
-│   │       └── process-document.ts
+│   │   └── functions/process-document.ts
 │   ├── lib/
+│   │   ├── auth/
+│   │   ├── documents/
+│   │   ├── embeddings/
+│   │   ├── errors/
+│   │   ├── observability/
+│   │   ├── rag/
+│   │   ├── rate-limit/
+│   │   ├── storage/
 │   │   ├── supabase/
-│   │   ├── gemini/
-│   │   └── rag/
+│   │   ├── env.ts
+│   │   └── utils.ts
+│   ├── server/actions/
+│   ├── types/
 │   └── middleware.ts
-├── public/
+├── supabase/migrations/
+├── tests/
+│   ├── setup.ts
+│   └── unit/
+├── .dockerignore
 ├── .env.example
-├── .env.local
 ├── .gitignore
 ├── Dockerfile
 ├── next.config.ts
 ├── package.json
 ├── playwright.config.ts
+├── postcss.config.mjs
 ├── tailwind.config.ts
 ├── tsconfig.json
 └── vitest.config.ts
 ```
+
+> `.env.local` is intentionally **excluded** — it should never be committed.
 
 ---
 
@@ -211,7 +239,7 @@ DocMind/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
+git clone https://github.com/subhra015/DocMind.git
 cd DocMind
 npm install
 ```
@@ -316,9 +344,14 @@ Recreate `match_chunks` after changing the vector dimension. Example signature:
 | `GET` | `/api/documents` | List documents |
 | `POST` | `/api/documents` | Create document / get upload URL |
 | `GET` | `/api/documents/:id` | Get document details |
+| `GET` | `/api/documents/:id/signed-url` | Get a signed URL for the file |
 | `POST` | `/api/documents/:id/upload-complete` | Mark upload complete and trigger processing |
+| `POST` | `/api/documents/:id/retry` | Retry a failed processing job |
 | `GET` | `/api/conversations` | List conversations |
 | `POST` | `/api/conversations` | Create conversation |
+| `GET` | `/api/conversations/:id` | Get conversation with messages |
+| `POST` | `/api/chat` | Send a message and get a RAG answer |
+| `GET` | `/api/auth/callback` | Supabase auth callback |
 | `POST` | `/api/inngest` | Inngest handler route |
 
 ---
@@ -345,6 +378,8 @@ docker run -p 7860:7860 --env-file .env.local docmind
 
 The container exposes port **7860**, which is the expected port for Hugging Face Docker Spaces.
 
+> **Tip:** Add a `.dockerignore` file to keep the image small. Exclude `node_modules`, `.next`, `.git`, `.env.local`, `tests`, `playwright-report`, and `files.txt`.
+
 ---
 
 ## ☁️ Deployment
@@ -357,7 +392,7 @@ git add .gitignore README.md
 git add .
 git commit -m "docs: add professional README and project setup"
 git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
+git remote add origin https://github.com/subhra015/DocMind.git
 git push -u origin main
 ```
 
@@ -372,7 +407,7 @@ git push origin main
 
 ### Hugging Face Spaces
 
-1. Create a new **Docker Space**.
+1. Create a new **Docker Space** (e.g. `subhra015/DocMind`).
 2. Add repository secrets in **Settings → Repository secrets**:
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `GEMINI_API_KEY`
@@ -383,24 +418,11 @@ git push origin main
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `NEXT_PUBLIC_APP_URL`
    - `PORT=7860`
-3. Ensure `README.md` starts with the Hugging Face front matter:
-
-```yaml
----
-title: DocMind
-emoji: 📚
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-```
-
+3. Ensure the `README.md` starts with the Hugging Face front matter (already present at the top of this file).
 4. Add the HF remote and push:
 
 ```bash
-git remote add hf https://huggingface.co/spaces/<username>/<space-name>
+git remote add hf https://huggingface.co/spaces/subhra015/DocMind
 git push hf main
 ```
 
@@ -487,8 +509,9 @@ git commit -m "chore: stop tracking build artifacts"
 
 ## 📄 License
 
-This project is licensed under the **MIT License**.  
-See `LICENSE` for more information.
+This project is licensed under the **MIT License**.
+
+> To make this official, create a `LICENSE` file at the root with the MIT License text and update the year and author.
 
 ---
 
