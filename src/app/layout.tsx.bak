@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { Providers } from "./providers";
 
 const FALLBACK_URL = "https://docmind02.vercel.app";
 
@@ -11,6 +12,9 @@ function resolveMetadataBase(): URL {
   try {
     return new URL(raw);
   } catch {
+    console.warn(
+      `[layout] NEXT_PUBLIC_APP_URL is not a valid URL: "${raw}". Falling back to ${FALLBACK_URL}.`
+    );
     return new URL(FALLBACK_URL);
   }
 }
@@ -23,18 +27,12 @@ export const metadata: Metadata = {
   },
   description:
     "Upload your PDFs, search them semantically, and get citation-aware AI answers.",
+  keywords: [
+    "PDF",
+    "RAG",
+    "AI",
+    "semantic search",
+    "document intelligence",
+    "vector search",
+  ],
 };
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans`}>
-        {children}
-      </body>
-    </html>
-  );
-}
