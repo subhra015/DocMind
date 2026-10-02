@@ -1,13 +1,3 @@
----
-title: DocMind
-emoji: 📚
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 📚 DocMind
 
 **DocMind** is a full-stack, AI-powered document intelligence application that lets you upload PDFs, process them in the background, and chat with your documents using Retrieval-Augmented Generation (RAG).
