@@ -6,7 +6,7 @@ import { generateRequestId } from "@/lib/utils";
 import { checkRateLimit } from "@/lib/rate-limit/client";
 import { RateLimitError, DocumentError } from "@/lib/errors/classes";
 import { embedTexts, getEmbeddingConfig } from "@/lib/embeddings/gemini";
-import { matchChunks, type MatchResult } from "@/lib/rag/retrieval";
+import { hybridSearchChunks, type MatchResult } from "@/lib/rag/retrieval";
 import { buildRAGPrompt } from "@/lib/rag/prompt";
 import { parseCitations } from "@/lib/rag/citations";
 import { getGeminiClient } from "@/lib/embeddings/gemini";
@@ -75,10 +75,7 @@ export async function POST(request: NextRequest) {
     if (userMsgError) throw userMsgError;
 
     // Generate query embedding
-    const { vectors } = await embedTexts(
-      [message],
-      getEmbeddingConfig()
-    );
+    const { vectors } = await embedTexts([message], getEmbeddingConfig());
     const queryEmbedding = vectors[0];
 
     if (!queryEmbedding || queryEmbedding.length === 0) {
@@ -88,15 +85,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Retrieve relevant chunks
+    // Retrieve relevant chunks via hybrid search (vector + keyword RRF)
     const searchDocumentId = documentId ?? conv.document_id;
-    const chunks: MatchResult[] = await matchChunks(
+    const chunks: MatchResult[] = await hybridSearchChunks(
       supabase,
+      message,
       queryEmbedding,
       user.id,
       searchDocumentId,
-      env().DEFAULT_RETRIEVAL_COUNT,
-      env().SIMILARITY_THRESHOLD
+      20 // fetch 20, will be reduced by reranking in Week 2
     );
 
     // Build RAG prompt
@@ -118,7 +115,14 @@ export async function POST(request: NextRequest) {
             model: env().GEMINI_CHAT_MODEL,
             contents: [
               { role: "user", parts: [{ text: systemPrompt }] },
-              { role: "model", parts: [{ text: "Understood. I'll answer based on the provided context." }] },
+              {
+                role: "model",
+                parts: [
+                  {
+                    text: "Understood. I'll answer based on the provided context.",
+                  },
+                ],
+              },
               { role: "user", parts: [{ text: userPrompt }] },
             ],
           });
@@ -205,7 +209,10 @@ export async function POST(request: NextRequest) {
               })}\n\n`
             )
           );
-          logger.error("chat stream error", { conversationId, errorCode: "STREAM_ERROR" });
+          logger.error("chat stream error", {
+            conversationId,
+            errorCode: "STREAM_ERROR",
+          });
         } finally {
           controller.close();
         }
