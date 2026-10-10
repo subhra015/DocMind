@@ -4,28 +4,29 @@ Below is the complete `README.md` in professional, technical tone, formatted for
 # DocMind
 
 **DocMind** is a full-stack, AI-powered document intelligence platform that enables users to upload PDFs, process them asynchronously, and query their contents through Retrieval-Augmented Generation (RAG).
+`**Live Demo:** [https://your-app.vercel.app](https://your-app.vercel.app)`
 
 Built with **Next.js 15**, **Supabase**, **Inngest**, **Google Gemini**, and deployed on **Vercel**.
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Vector-green)
-![Inngest](https://img.shields.io/badge/Inngest-Background%20Jobs-purple)
-![Gemini](https://img.shields.io/badge/Google-Gemini-orange)
-![Vercel](https://img.shields.io/badge/Vercel-Deployed-black)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Vector-green)](https://supabase.com/)
+[![Inngest](https://img.shields.io/badge/Inngest-Background%20Jobs-purple)](https://www.inngest.com/)
+[![Gemini](https://img.shields.io/badge/Google-Gemini-orange)](https://ai.google.dev/)
+[![Vercel](https://img.shields.io/badge/Vercel-Deployed-black)](https://vercel.com/)
 
 ---
 
 ## Overview
 
-DocMind implements a production-oriented RAG pipeline with hybrid retrieval, LLM-based reranking, and inline citations. It is designed to demonstrate modern full-stack engineering practices: asynchronous background processing, vector search, serverless deployment, and reproducible evaluation.
+I built DocMind to demonstrate how modern RAG pipelines can be optimized beyond simple vector search. The application features hybrid retrieval, LLM-based reranking, and inline citations, all deployed serverlessly with durable background jobs.
 
-### Engineering Highlights
+### Technical Highlights
 
-- **Hybrid Retrieval**: Combines pgvector cosine similarity with PostgreSQL full-text search using Reciprocal Rank Fusion (RRF).
-- **LLM Reranking**: Uses Gemini Flash as an LLM judge to rescore the top 20 hybrid candidates and select the top 5 for generation.
-- **Inline Citations**: Maps model-generated `[n]` markers to source chunks, persisted as JSONB and rendered as interactive citation chips.
-- **Evaluation Harness**: Auto-generates Q&A pairs from any uploaded PDF and benchmarks vector-only retrieval against the hybrid+rerank pipeline using an LLM judge.
+- **Hybrid Retrieval**: Combined pgvector cosine similarity with PostgreSQL full-text search using Reciprocal Rank Fusion (RRF) to improve recall on both semantic and keyword-heavy queries.
+- **LLM Reranking**: Used Gemini Flash as an LLM judge to rescore the top 20 hybrid candidates and select the top 5 for generation, fixing the "correct answer buried at rank 12" problem.
+- **Inline Citations**: Mapped model-generated `[n]` markers to source chunks, persisted as JSONB, and rendered as interactive citation chips.
+- **Evaluation Harness**: Built a general-purpose harness that auto-generates Q&A pairs from any uploaded PDF and benchmarks vector-only retrieval against the hybrid+rerank pipeline using an LLM judge.
 - **Serverless Deployment**: Deployed on Vercel with Inngest for durable background jobs and Supabase for auth, storage, and vector database.
 
 ---
