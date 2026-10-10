@@ -5,8 +5,16 @@ import { handleApiError } from "@/lib/errors/handlers";
 import { generateRequestId } from "@/lib/utils";
 import { checkRateLimit } from "@/lib/rate-limit/client";
 import { RateLimitError, DocumentError } from "@/lib/errors/classes";
-import { embedTexts, getEmbeddingConfig, getGeminiClient } from "@/lib/embeddings/gemini";
-import { hybridSearchChunks, type MatchResult } from "@/lib/rag/retrieval";
+import {
+  embedTexts,
+  getEmbeddingConfig,
+  getGeminiClient,
+} from "@/lib/embeddings/gemini";
+import {
+  hybridSearchChunks,
+  matchChunks,
+  type MatchResult,
+} from "@/lib/rag/retrieval";
 import { rerankChunks } from "@/lib/rag/rerank";
 import { buildRAGPrompt } from "@/lib/rag/prompt";
 import { parseCitations } from "@/lib/rag/citations";
@@ -18,6 +26,7 @@ const chatSchema = z.object({
   conversationId: z.string().uuid(),
   message: z.string().min(1).max(5000),
   documentId: z.string().uuid().nullable().optional(),
+  pipeline: z.enum(["vector", "hybrid"]).optional().default("hybrid"),
 });
 
 export async function POST(request: NextRequest) {
@@ -38,10 +47,8 @@ export async function POST(request: NextRequest) {
       return handleApiError(parsed.error, requestId);
     }
 
-    const { conversationId, message, documentId } = parsed.data;
+    const { conversationId, message, documentId, pipeline } = parsed.data;
 
-    // `db` is a loose-typed alias that sidesteps Supabase type inference
-    // failures until we generate proper database types.
     const supabase = createSupabaseServiceClient();
     const db = supabase as any;
 
@@ -79,8 +86,10 @@ export async function POST(request: NextRequest) {
     if (userMsgError) throw userMsgError;
 
     // Generate query embedding
-    const vectors = await embedTexts([message], getEmbeddingConfig());
-    const queryEmbedding = vectors[0];
+    const embeddingResults = await embedTexts([message], getEmbeddingConfig());
+    const first = embeddingResults[0] as any;
+    const queryEmbedding: number[] =
+      first?.embedding ?? first?.vector ?? first?.values ?? [];
 
     if (!queryEmbedding || queryEmbedding.length === 0) {
       throw new DocumentError("Query embedding failed.", {
@@ -89,24 +98,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Retrieve relevant chunks via hybrid search (vector + keyword RRF)
     const searchDocumentId = documentId ?? conv.document_id;
-    const hybridResults: MatchResult[] = await hybridSearchChunks(
-      supabase,
-      message,
-      queryEmbedding,
-      user.id,
-      searchDocumentId,
-      20
-    );
 
-    // Re-rank the top 20 hybrid results down to the best 5 using Gemini as judge.
-    const chunks: MatchResult[] = await rerankChunks(message, hybridResults, 5);
+    // Branch on pipeline for Week 4 evaluation
+    let chunks: MatchResult[];
+
+    if (pipeline === "vector") {
+      // Old pipeline: vector-only search, no reranking.
+      chunks = await matchChunks(
+        supabase,
+        queryEmbedding,
+        user.id,
+        searchDocumentId,
+        env().DEFAULT_RETRIEVAL_COUNT,
+        env().SIMILARITY_THRESHOLD
+      );
+    } else {
+      // New pipeline: hybrid search + rerank.
+      const hybridResults: MatchResult[] = await hybridSearchChunks(
+        supabase,
+        message,
+        queryEmbedding,
+        user.id,
+        searchDocumentId,
+        20
+      );
+      chunks = await rerankChunks(message, hybridResults, 5);
+    }
 
     // Build RAG prompt
     const { systemPrompt, userPrompt, sources } = buildRAGPrompt(message, chunks);
 
-    // Stream response from Gemini
     const ai = getGeminiClient();
     const startTime = Date.now();
 
@@ -145,10 +167,8 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Parse citations from full response
           const citations = parseCitations(fullText, chunks);
 
-          // Persist assistant message
           const { data: assistantMessage } = await db
             .from("messages")
             .insert({
@@ -167,13 +187,9 @@ export async function POST(request: NextRequest) {
             .select()
             .single();
 
-          // Send citations + done events
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({
-                type: "citations",
-                data: citations,
-              })}\n\n`
+              `data: ${JSON.stringify({ type: "citations", data: citations })}\n\n`
             )
           );
           controller.enqueue(
@@ -188,7 +204,6 @@ export async function POST(request: NextRequest) {
             )
           );
 
-          // Update conversation timestamp
           await db
             .from("conversations")
             .update({ updated_at: new Date().toISOString() })
@@ -199,6 +214,7 @@ export async function POST(request: NextRequest) {
             userId: user.id,
             durationMs: Date.now() - startTime,
             chunkCount: chunks.length,
+            pipeline,
           });
         } catch (err) {
           const encoder = new TextEncoder();

@@ -1,84 +1,49 @@
 import type { MatchResult } from "./retrieval";
-import type { CitationSource } from "@/types";
 
-const CITATION_PATTERN =
-  /\[Source:\s*([^,\]]+),\s*page\s*(\d+)\]/g;
+export interface Citation {
+  index: number;
+  document_id: string;
+  document_name: string;
+  chunk_index: number;
+  page_number: number;
+  similarity: number;
+  rerank_score?: number;
+  excerpt: string;
+}
 
 /**
- * Parses citations from the assistant's response text.
- * Maps each [Source: filename, page N] reference to structured data.
+ * Parses [n] markers from the model's answer and maps them to the
+ * chunks that were passed in the prompt (1-indexed).
+ *
+ * Returns citations in the order they first appear in the answer.
  */
 export function parseCitations(
   text: string,
   chunks: MatchResult[]
-): CitationSource[] {
-  const matches: Array<{ filename: string; pageNumber: number }> = [];
+): Citation[] {
+  const matches = text.match(/\[(\d+)\]/g) ?? [];
+  const seen = new Set<number>();
+  const citations: Citation[] = [];
 
-  let match: RegExpExecArray | null;
-  const seen = new Set<string>();
+  for (const m of matches) {
+    const num = parseInt(m.replace(/[[\]]/g, ""), 10);
+    if (isNaN(num) || num < 1 || seen.has(num)) continue;
+    seen.add(num);
 
-  while ((match = CITATION_PATTERN.exec(text)) !== null) {
-    const filename = match[1].trim();
-    const pageNumber = parseInt(match[2], 10);
+    const chunk = chunks[num - 1];
+    if (!chunk) continue;
 
-    const key = `${filename}:${pageNumber}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      matches.push({ filename, pageNumber });
-    }
+    citations.push({
+      index: num,
+      document_id: chunk.document_id,
+      document_name: chunk.document_name ?? "Document",
+      chunk_index: chunk.chunk_index,
+      page_number: chunk.page_number ?? 0,
+      similarity: chunk.similarity ?? 0,
+      rerank_score: (chunk as any).rerank_score,
+      excerpt: chunk.content.slice(0, 200),
+    });
   }
 
-  // Map to full citation objects using chunk data
-  const citations: CitationSource[] = [];
-
-  for (const { filename, pageNumber } of matches) {
-    const matchingChunks = chunks.filter(
-      (c) =>
-        c.page_number === pageNumber &&
-        ((c.metadata as Record<string, unknown>)?.filename as string) ===
-          filename
-    );
-
-    const bestChunk = matchingChunks[0];
-
-    if (bestChunk) {
-      citations.push({
-        documentId: bestChunk.document_id,
-        filename,
-        pageNumber,
-        chunkId: bestChunk.id,
-        excerpt:
-          bestChunk.content.substring(0, 300) +
-          (bestChunk.content.length > 300 ? "…" : ""),
-      });
-    } else {
-      // Best-effort: find closest chunk by page number
-      const fallback = chunks.find((c) => c.page_number === pageNumber);
-      citations.push({
-        documentId: fallback?.document_id ?? "",
-        filename,
-        pageNumber,
-        chunkId: fallback?.id ?? "",
-        excerpt:
-          fallback?.content.substring(0, 300) ?? "Source not available.",
-      });
-    }
-  }
-
-  return citations;
-}
-
-/**
- * Converts parsed citations into markdown-compatible links
- * that can be rendered in the UI.
- */
-export function citationsToMarkdownLinks(
-  citations: CitationSource[]
-): string {
-  return citations
-    .map(
-      (c) =>
-        `[${c.filename}, p.${c.pageNumber}](citation:${c.documentId}:${c.pageNumber})`
-    )
-    .join(", ");
+  return citations.sort((a, b) => a.index - b.index);
 }
