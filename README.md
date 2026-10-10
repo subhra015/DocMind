@@ -4,7 +4,6 @@ Below is the complete `README.md` in professional, technical tone, formatted for
 # DocMind
 
 **DocMind** is a full-stack, AI-powered document intelligence platform that enables users to upload PDFs, process them asynchronously, and query their contents through Retrieval-Augmented Generation (RAG).
-Live Demo: (https://doc-mind-tawny.vercel.app)
 
 Built with **Next.js 15**, **Supabase**, **Inngest**, **Google Gemini**, and deployed on **Vercel**.
 
@@ -298,7 +297,7 @@ Start the Inngest Dev Server in a second terminal:
 npx inngest-cli dev -u http://localhost:3000/api/inngest
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Live Demo: (https://doc-mind-tawny.vercel.app)
 
 ---
 
@@ -315,7 +314,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `INNGEST_APP_ID` | Yes | Server | Inngest app ID, e.g. `docmind` |
 | `NEXT_PUBLIC_APP_URL` | Yes | Public | App URL, e.g. `http://localhost:3000` or your Vercel URL |
 
-> Do not set `PORT` on Vercel. Vercel manages the port automatically.
+
 
 ---
 
