@@ -4,7 +4,7 @@ Below is the complete `README.md` in professional, technical tone, formatted for
 # DocMind
 
 **DocMind** is a full-stack, AI-powered document intelligence platform that enables users to upload PDFs, process them asynchronously, and query their contents through Retrieval-Augmented Generation (RAG).
-`**Live Demo:** [https://your-app.vercel.app](https://your-app.vercel.app)`
+**Live Demo:** (https://doc-mind-tawny.vercel.app)
 
 Built with **Next.js 15**, **Supabase**, **Inngest**, **Google Gemini**, and deployed on **Vercel**.
 
