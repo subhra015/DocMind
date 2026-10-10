@@ -1,15 +1,15 @@
 import { NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth/session";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { handleApiError, createSuccessResponse } from "@/lib/errors/handlers";
+import { handleApiError } from "@/lib/errors/handlers";
 import { generateRequestId } from "@/lib/utils";
 import { checkRateLimit } from "@/lib/rate-limit/client";
 import { RateLimitError, DocumentError } from "@/lib/errors/classes";
-import { embedTexts, getEmbeddingConfig } from "@/lib/embeddings/gemini";
+import { embedTexts, getEmbeddingConfig, getGeminiClient } from "@/lib/embeddings/gemini";
 import { hybridSearchChunks, type MatchResult } from "@/lib/rag/retrieval";
+import { rerankChunks } from "@/lib/rag/rerank";
 import { buildRAGPrompt } from "@/lib/rag/prompt";
 import { parseCitations } from "@/lib/rag/citations";
-import { getGeminiClient } from "@/lib/embeddings/gemini";
 import { env } from "@/lib/env";
 import { z } from "zod";
 import { logger } from "@/lib/observability/logger";
@@ -39,10 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     const { conversationId, message, documentId } = parsed.data;
+
+    // `db` is a loose-typed alias that sidesteps Supabase type inference
+    // failures until we generate proper database types.
     const supabase = createSupabaseServiceClient();
+    const db = supabase as any;
 
     // Verify conversation belongs to user
-    const { data: conv, error: convError } = await supabase
+    const { data: conv, error: convError } = await db
       .from("conversations")
       .select("id, user_id, document_id")
       .eq("id", conversationId)
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store user message
-    const { data: userMessage, error: userMsgError } = await supabase
+    const { error: userMsgError } = await db
       .from("messages")
       .insert({
         conversation_id: conversationId,
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
     if (userMsgError) throw userMsgError;
 
     // Generate query embedding
-    const { vectors } = await embedTexts([message], getEmbeddingConfig());
+    const vectors = await embedTexts([message], getEmbeddingConfig());
     const queryEmbedding = vectors[0];
 
     if (!queryEmbedding || queryEmbedding.length === 0) {
@@ -87,20 +91,20 @@ export async function POST(request: NextRequest) {
 
     // Retrieve relevant chunks via hybrid search (vector + keyword RRF)
     const searchDocumentId = documentId ?? conv.document_id;
-    const chunks: MatchResult[] = await hybridSearchChunks(
+    const hybridResults: MatchResult[] = await hybridSearchChunks(
       supabase,
       message,
       queryEmbedding,
       user.id,
       searchDocumentId,
-      20 // fetch 20, will be reduced by reranking in Week 2
+      20
     );
 
+    // Re-rank the top 20 hybrid results down to the best 5 using Gemini as judge.
+    const chunks: MatchResult[] = await rerankChunks(message, hybridResults, 5);
+
     // Build RAG prompt
-    const { systemPrompt, userPrompt, sources } = buildRAGPrompt(
-      message,
-      chunks
-    );
+    const { systemPrompt, userPrompt, sources } = buildRAGPrompt(message, chunks);
 
     // Stream response from Gemini
     const ai = getGeminiClient();
@@ -145,7 +149,7 @@ export async function POST(request: NextRequest) {
           const citations = parseCitations(fullText, chunks);
 
           // Persist assistant message
-          const { data: assistantMessage } = await supabase
+          const { data: assistantMessage } = await db
             .from("messages")
             .insert({
               conversation_id: conversationId,
@@ -153,6 +157,7 @@ export async function POST(request: NextRequest) {
               role: "assistant",
               content: fullText,
               sources: JSON.stringify(citations),
+              citations: citations,
               token_usage: JSON.stringify({
                 promptTokens: message.length / 4,
                 completionTokens: fullText.length / 4,
@@ -162,7 +167,7 @@ export async function POST(request: NextRequest) {
             .select()
             .single();
 
-          // Send done event with citations
+          // Send citations + done events
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
@@ -184,7 +189,7 @@ export async function POST(request: NextRequest) {
           );
 
           // Update conversation timestamp
-          await supabase
+          await db
             .from("conversations")
             .update({ updated_at: new Date().toISOString() })
             .eq("id", conversationId);
