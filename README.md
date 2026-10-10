@@ -1,35 +1,54 @@
-# 📚 DocMind
+Below is the complete `README.md` in professional, technical tone, formatted for direct GitHub editing. It highlights architecture, engineering decisions, measurable evaluation, and deployment details in a way that is readable for both engineers and recruiters.
 
-**DocMind** is a full-stack, AI-powered document intelligence application that lets you upload PDFs, process them in the background, and chat with your documents using Retrieval-Augmented Generation (RAG).
+```markdown
+# DocMind
 
-Built with **Next.js 15**, **Supabase**, **Inngest**, **Google Gemini**, and **Docker**.
+**DocMind** is a full-stack, AI-powered document intelligence platform that enables users to upload PDFs, process them asynchronously, and query their contents through Retrieval-Augmented Generation (RAG).
+
+Built with **Next.js 15**, **Supabase**, **Inngest**, **Google Gemini**, and deployed on **Vercel**.
 
 ![Next.js](https://img.shields.io/badge/Next.js-15-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Vector-green)
 ![Inngest](https://img.shields.io/badge/Inngest-Background%20Jobs-purple)
 ![Gemini](https://img.shields.io/badge/Google-Gemini-orange)
-![Docker](https://img.shields.io/badge/Docker-ready-blue)
+![Vercel](https://img.shields.io/badge/Vercel-Deployed-black)
 
 ---
 
-## ✨ Features
+## Overview
 
-- 🔐 **Authentication** with Supabase Auth
-- 📄 **PDF upload** and document library
-- ⚙️ **Background processing** with Inngest
-- 🧩 **Automatic chunking** and text extraction
-- 🧠 **Gemini embeddings** stored in Supabase Postgres with `pgvector`
-- 🔎 **Vector similarity search** via `match_chunks`
-- 💬 **RAG chat** with document context
-- 📊 **Document status tracking**: `queued`, `processing`, `ready`, `failed`, `deleted`
-- 🐳 **Docker-ready** for Hugging Face Spaces
-- ❤️ **Health check endpoint** at `/api/health`
-- 🧪 **Testing** with Vitest and Playwright
+DocMind implements a production-oriented RAG pipeline with hybrid retrieval, LLM-based reranking, and inline citations. It is designed to demonstrate modern full-stack engineering practices: asynchronous background processing, vector search, serverless deployment, and reproducible evaluation.
+
+### Engineering Highlights
+
+- **Hybrid Retrieval**: Combines pgvector cosine similarity with PostgreSQL full-text search using Reciprocal Rank Fusion (RRF).
+- **LLM Reranking**: Uses Gemini Flash as an LLM judge to rescore the top 20 hybrid candidates and select the top 5 for generation.
+- **Inline Citations**: Maps model-generated `[n]` markers to source chunks, persisted as JSONB and rendered as interactive citation chips.
+- **Evaluation Harness**: Auto-generates Q&A pairs from any uploaded PDF and benchmarks vector-only retrieval against the hybrid+rerank pipeline using an LLM judge.
+- **Serverless Deployment**: Deployed on Vercel with Inngest for durable background jobs and Supabase for auth, storage, and vector database.
 
 ---
 
-## 🏗️ Architecture
+## Features
+
+- **Authentication** with Supabase Auth
+- **PDF upload** and document library
+- **Background processing** with Inngest
+- **Automatic chunking** and text extraction
+- **Gemini embeddings** stored in Supabase Postgres with `pgvector`
+- **Hybrid search** (vector + keyword with Reciprocal Rank Fusion)
+- **Reranking** with Gemini as an LLM judge
+- **RAG chat** with document context
+- **Inline citations** with clickable `[n]` chips and popovers
+- **Document status tracking**: `queued`, `processing`, `ready`, `failed`, `deleted`
+- **Health check endpoint** at `/api/health`
+- **Testing** with Vitest and Playwright
+- **Evaluation harness** for reproducible RAG benchmarking
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -63,8 +82,9 @@ flowchart TB
     Chat --> API
     API --> QueryEmbed[Embed Query]
     QueryEmbed --> DB
-    DB --> Match[match_chunks]
-    Match --> LLM[Gemini LLM]
+    DB --> Hybrid[hybrid_search_chunks]
+    Hybrid --> Rerank[Gemini Rerank]
+    Rerank --> LLM[Gemini LLM]
     LLM --> Chat
   end
 
@@ -75,7 +95,7 @@ flowchart TB
 
 ---
 
-## 🔄 RAG Pipeline Flow
+## RAG Pipeline
 
 ```mermaid
 sequenceDiagram
@@ -106,16 +126,18 @@ sequenceDiagram
   W->>A: POST /api/chat
   A->>G: Embed query
   G-->>A: Query embedding
-  A->>D: Call match_chunks(query_embedding)
-  D-->>A: Relevant chunks
-  A->>G: Generate answer with context
-  G-->>A: Answer
-  A-->>W: Stream/return answer
+  A->>D: Call hybrid_search_chunks
+  D-->>A: Top 20 chunks
+  A->>G: Rerank chunks (LLM judge)
+  G-->>A: Scored chunks
+  A->>G: Generate answer with top 5 + citations
+  G-->>A: Answer with [n] markers
+  A-->>W: Stream/return answer + citations
 ```
 
 ---
 
-## 📌 Document Status State
+## Document Status State
 
 ```mermaid
 stateDiagram-v2
@@ -129,7 +151,7 @@ stateDiagram-v2
 
 ---
 
-## 🧰 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -137,16 +159,19 @@ stateDiagram-v2
 | Language | TypeScript |
 | UI | React, Tailwind CSS, Radix UI, Lucide |
 | Auth & DB | Supabase Auth, Supabase Postgres |
-| Vector Search | `pgvector`, `match_chunks` |
+| Vector Search | `pgvector`, `hybrid_search_chunks` (RRF) |
+| Reranking | Gemini Flash (LLM judge) |
+| Citations | Inline `[n]` chips with popovers |
 | Storage | Supabase Storage |
 | Background Jobs | Inngest |
 | AI / Embeddings | Google Gemini |
 | Testing | Vitest, Playwright, Testing Library |
-| Deployment | GitHub, Hugging Face Spaces, Docker |
+| Evaluation | Custom harness (`npm run eval`) |
+| Deployment | Vercel |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 DocMind/
@@ -174,6 +199,9 @@ DocMind/
 │   │   ├── layout.tsx
 │   │   └── providers.tsx
 │   ├── components/
+│   │   ├── chat/
+│   │   │   ├── citation-chip.tsx
+│   │   │   └── message-content.tsx
 │   │   ├── documents/
 │   │   └── ui/
 │   ├── hooks/
@@ -187,6 +215,10 @@ DocMind/
 │   │   ├── errors/
 │   │   ├── observability/
 │   │   ├── rag/
+│   │   │   ├── citations.ts
+│   │   │   ├── prompt.ts
+│   │   │   ├── rerank.ts
+│   │   │   └── retrieval.ts
 │   │   ├── rate-limit/
 │   │   ├── storage/
 │   │   ├── supabase/
@@ -197,12 +229,14 @@ DocMind/
 │   └── middleware.ts
 ├── supabase/migrations/
 ├── tests/
+│   ├── rag-eval/
+│   │   ├── run-eval.ts
+│   │   ├── questions.json (optional)
+│   │   └── results.json (generated)
 │   ├── setup.ts
 │   └── unit/
-├── .dockerignore
 ├── .env.example
 ├── .gitignore
-├── Dockerfile
 ├── next.config.ts
 ├── package.json
 ├── playwright.config.ts
@@ -212,21 +246,22 @@ DocMind/
 └── vitest.config.ts
 ```
 
-> `.env.local` is intentionally **excluded** — it should never be committed.
+> `.env.local` is intentionally excluded and should never be committed.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- Node.js **20+**
+- Node.js 20+
 - npm or pnpm
 - Supabase project
 - Google Gemini API key
 - Inngest account (or local Inngest Dev Server)
+- Vercel account for deployment
 
-### 1. Clone and install
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/subhra015/DocMind.git
@@ -234,7 +269,7 @@ cd DocMind
 npm install
 ```
 
-### 2. Configure environment variables
+### 2. Configure Environment Variables
 
 Copy `.env.example` to `.env.local`:
 
@@ -248,27 +283,15 @@ On Windows PowerShell:
 copy .env.example .env.local
 ```
 
-Fill in the values:
+Fill in the values described in the table below.
 
-| Variable | Required | Scope | Description |
-|---|---:|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Public | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Public | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Server only | Supabase service role key. Never expose to client |
-| `GEMINI_API_KEY` | ✅ | Server only | Google Gemini API key |
-| `INNGEST_EVENT_KEY` | ✅ | Server | Inngest event key |
-| `INNGEST_SIGNING_KEY` | ✅ | Server | Inngest signing key for production |
-| `INNGEST_APP_ID` | ✅ | Server | Inngest app ID, e.g. `docmind` |
-| `NEXT_PUBLIC_APP_URL` | ✅ | Public | App URL, e.g. `http://localhost:3000` |
-| `PORT` | ✅ | Runtime | `3000` locally, `7860` on Hugging Face |
-
-### 3. Run locally
+### 3. Run Locally
 
 ```bash
 npm run dev
 ```
 
-Start Inngest Dev Server in a second terminal:
+Start the Inngest Dev Server in a second terminal:
 
 ```bash
 npx inngest-cli dev -u http://localhost:3000/api/inngest
@@ -278,23 +301,42 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## 🗄️ Supabase Setup
+## Environment Variables
 
-Enable `pgvector` in a dedicated `extensions` schema:
+| Variable | Required | Scope | Description |
+|---|---:|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Public | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Public | Supabase anonymous key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server only | Supabase service role key. Never expose to client |
+| `GEMINI_API_KEY` | Yes | Server only | Google Gemini API key |
+| `INNGEST_EVENT_KEY` | Yes | Server | Inngest event key |
+| `INNGEST_SIGNING_KEY` | Yes | Server | Inngest signing key for production |
+| `INNGEST_APP_ID` | Yes | Server | Inngest app ID, e.g. `docmind` |
+| `NEXT_PUBLIC_APP_URL` | Yes | Public | App URL, e.g. `http://localhost:3000` or your Vercel URL |
+
+> Do not set `PORT` on Vercel. Vercel manages the port automatically.
+
+---
+
+## Database Setup
+
+### Enable pgvector
 
 ```sql
 create schema if not exists extensions;
 create extension if not exists vector with schema extensions;
 ```
 
-Ensure the embedding column uses **768 dimensions** for Gemini:
+### Configure Embedding Dimension
+
+Gemini embeddings are 768-dimensional.
 
 ```sql
 alter table public.chunks
 alter column embedding type extensions.vector(768);
 ```
 
-Allow document statuses:
+### Document Status Constraint
 
 ```sql
 alter table public.documents
@@ -305,7 +347,7 @@ add constraint documents_status_check
 check (status in ('queued', 'processing', 'ready', 'failed', 'deleted'));
 ```
 
-Add required document columns if missing:
+### Required Document Columns
 
 ```sql
 alter table public.documents add column if not exists checksum text;
@@ -314,19 +356,148 @@ alter table public.documents add column if not exists mime_type text;
 alter table public.documents add column if not exists processing_progress integer default 0;
 ```
 
-Recreate `match_chunks` after changing the vector dimension. Example signature:
+### Citations and Token Usage
 
 ```sql
--- Use your actual function signature from Supabase.
--- Example:
--- public.match_chunks(query_embedding extensions.vector(768), match_count integer)
+alter table public.messages
+add column if not exists citations jsonb default '[]';
+
+alter table public.messages
+add column if not exists token_usage jsonb;
 ```
 
-> Always verify the real signature with `pg_get_function_identity_arguments`.
+### Full-Text Search Column and Index
+
+```sql
+alter table public.chunks
+add column if not exists content_tsv tsvector
+generated always as (to_tsvector('english', content)) stored;
+
+create index if not exists chunks_content_tsv_idx
+on public.chunks using gin (content_tsv);
+```
+
+### Hybrid Search Function
+
+```sql
+create or replace function public.hybrid_search_chunks(
+  query_embedding extensions.vector(768),
+  query_text text,
+  requested_user_id uuid,
+  requested_document_id uuid default null,
+  match_count int default 20,
+  rrf_k int default 60
+)
+returns table (
+  id uuid,
+  document_id uuid,
+  content text,
+  chunk_index int,
+  page_number int,
+  similarity float,
+  keyword_rank int,
+  vector_rank int,
+  rrf_score float
+)
+language plpgsql
+as $$
+begin
+  return query
+  with vector_results as (
+    select
+      c.id,
+      c.document_id,
+      c.content,
+      c.chunk_index,
+      c.page_number,
+      1 - (c.embedding <=> query_embedding) as similarity,
+      row_number() over (order by c.embedding <=> query_embedding) as vector_rank
+    from public.chunks c
+    where c.user_id = requested_user_id
+      and (requested_document_id is null or c.document_id = requested_document_id)
+    order by c.embedding <=> query_embedding
+    limit match_count
+  ),
+  keyword_results as (
+    select
+      c.id,
+      c.document_id,
+      c.content,
+      c.chunk_index,
+      c.page_number,
+      ts_rank(c.content_tsv, plainto_tsquery('english', query_text)) as keyword_score,
+      row_number() over (order by ts_rank(c.content_tsv, plainto_tsquery('english', query_text)) desc) as keyword_rank
+    from public.chunks c
+    where c.user_id = requested_user_id
+      and (requested_document_id is null or c.document_id = requested_document_id)
+      and c.content_tsv @@ plainto_tsquery('english', query_text)
+    order by keyword_score desc
+    limit match_count
+  )
+  select
+    coalesce(v.id, k.id) as id,
+    coalesce(v.document_id, k.document_id) as document_id,
+    coalesce(v.content, k.content) as content,
+    coalesce(v.chunk_index, k.chunk_index) as chunk_index,
+    coalesce(v.page_number, k.page_number) as page_number,
+    coalesce(v.similarity, 0) as similarity,
+    k.keyword_rank,
+    v.vector_rank,
+    coalesce(1.0 / (rrf_k + v.vector_rank), 0) + coalesce(1.0 / (rrf_k + k.keyword_rank), 0) as rrf_score
+  from vector_results v
+  full outer join keyword_results k on v.id = k.id
+  order by rrf_score desc
+  limit match_count;
+end;
+$$;
+```
+
+### Vector-Only Baseline Function
+
+Used by the evaluation harness for apples-to-apples comparison.
+
+```sql
+create or replace function public.match_document_chunks(
+  query_embedding extensions.vector(768),
+  requested_user_id uuid,
+  requested_document_id uuid default null,
+  similarity_threshold float default 0.0,
+  match_count int default 5
+)
+returns table (
+  id uuid,
+  document_id uuid,
+  content text,
+  chunk_index int,
+  page_number int,
+  similarity float
+)
+language plpgsql
+as $$
+begin
+  return query
+  select
+    c.id,
+    c.document_id,
+    c.content,
+    c.chunk_index,
+    c.page_number,
+    1 - (c.embedding <=> query_embedding) as similarity
+  from public.chunks c
+  where c.user_id = requested_user_id
+    and (requested_document_id is null or c.document_id = requested_document_id)
+    and 1 - (c.embedding <=> query_embedding) > similarity_threshold
+  order by c.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
+```
+
+> Always verify function signatures with `pg_get_function_identity_arguments` after schema changes.
 
 ---
 
-## 🔌 API Endpoints
+## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -346,7 +517,9 @@ Recreate `match_chunks` after changing the vector dimension. Example signature:
 
 ---
 
-## 🧪 Testing
+## Testing and Evaluation
+
+### Standard Tests
 
 ```bash
 npm run lint
@@ -355,24 +528,59 @@ npm run test
 npm run test:e2e
 ```
 
----
+### RAG Evaluation Harness
 
-## 🐳 Docker
+A general-purpose evaluation harness is included. It:
 
-Build locally:
+1. Auto-generates 5 Q&A pairs from any uploaded PDF.
+2. Runs both a vector-only pipeline and the hybrid+rerank pipeline.
+3. Scores each answer 1–5 using Gemini Flash as an LLM judge.
+4. Writes detailed per-question results to `tests/rag-eval/results.json`.
+
+To run:
+
+1. Upload a PDF in the app and wait for `status = ready`.
+2. Execute:
 
 ```bash
-docker build -t docmind .
-docker run -p 7860:7860 --env-file .env.local docmind
+npm run eval
 ```
 
-The container exposes port **7860**, which is the expected port for Hugging Face Docker Spaces.
+Illustrative output format:
 
-> **Tip:** Add a `.dockerignore` file to keep the image small. Exclude `node_modules`, `.next`, `.git`, `.env.local`, `tests`, `playwright-report`, and `files.txt`.
+```text
+Vector-only average   : 3.20 / 5
+Hybrid+rerank average : 4.40 / 5
+Delta                 : +1.20
+```
+
+You may optionally provide fixed questions in `tests/rag-eval/questions.json` for reproducibility.
 
 ---
 
-## ☁️ Deployment
+## Deployment
+
+### Vercel
+
+1. Push the repository to GitHub.
+2. Import the project into Vercel.
+3. Set the following Environment Variables in Vercel:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `GEMINI_API_KEY`
+   - `INNGEST_EVENT_KEY`
+   - `INNGEST_SIGNING_KEY`
+   - `INNGEST_APP_ID`
+   - `NEXT_PUBLIC_APP_URL=https://<your-vercel-domain>`
+4. In Supabase → Authentication → URL Configuration:
+   - Site URL: `https://<your-vercel-domain>`
+   - Redirect URLs: add `https://<your-vercel-domain>/api/auth/callback`
+5. In Inngest Cloud, sync the app to `https://<your-vercel-domain>/api/inngest`.
+6. Ensure `middleware.ts` excludes `/api/inngest` and `/api/health` from auth checks.
+7. Deploy.
+
+> Do not set `PORT` on Vercel. Vercel manages the port automatically.
 
 ### GitHub
 
@@ -380,7 +588,7 @@ The container exposes port **7860**, which is the expected port for Hugging Face
 git init
 git add .gitignore README.md
 git add .
-git commit -m "docs: add professional README and project setup"
+git commit -m "docs: update README for hybrid search and citations"
 git branch -M main
 git remote add origin https://github.com/subhra015/DocMind.git
 git push -u origin main
@@ -391,43 +599,16 @@ If the remote already exists:
 ```bash
 git add .gitignore README.md
 git add .
-git commit -m "docs: add professional README and project setup"
+git commit -m "docs: update README for hybrid search and citations"
 git push origin main
-```
-
-### Hugging Face Spaces
-
-1. Create a new **Docker Space** (e.g. `subhra015/DocMind`).
-2. Add repository secrets in **Settings → Repository secrets**:
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `GEMINI_API_KEY`
-   - `INNGEST_EVENT_KEY`
-   - `INNGEST_SIGNING_KEY`
-   - `INNGEST_APP_ID`
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `NEXT_PUBLIC_APP_URL`
-   - `PORT=7860`
-3. Ensure the `README.md` starts with the Hugging Face front matter (already present at the top of this file).
-4. Add the HF remote and push:
-
-```bash
-git remote add hf https://huggingface.co/spaces/subhra015/DocMind
-git push hf main
-```
-
-If the remote already exists:
-
-```bash
-git push hf main
 ```
 
 ---
 
-## 🔐 Security Notes
+## Security
 
-- **Never commit `.env.local`**.
-- Rotate any keys that were ever pasted into chat, logs, or commits.
+- Never commit `.env.local`.
+- Rotate any keys that were ever exposed in chat, logs, or commits.
 - Keep `SUPABASE_SERVICE_ROLE_KEY` and `GEMINI_API_KEY` server-side only.
 - Enable Supabase Row Level Security (RLS) for user-owned tables.
 - Use `INNGEST_SIGNING_KEY` in production.
@@ -449,7 +630,7 @@ git commit -m "chore: stop tracking build artifacts"
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 | Problem | Cause | Fix |
 |---|---|---|
@@ -463,41 +644,27 @@ git commit -m "chore: stop tracking build artifacts"
 | `expected 1536 dimensions, not 768` | Embedding dimension mismatch | Alter column to `extensions.vector(768)` |
 | Library still says “Queued” | Supabase Realtime disabled | Refresh or enable Realtime replication |
 | Chat send button greyed out | No active conversation | Create a new conversation with `+` |
+| Vercel build fails on `no-empty-object-type` | TypeScript ESLint strictness | Add `typescript.ignoreBuildErrors` and `eslint.ignoreDuringBuilds` in `next.config.ts` |
+| `useSearchParams()` should be wrapped in Suspense | Next.js 15 requirement | Wrap `/login` and `/chat` in `<Suspense>` and add `export const dynamic = "force-dynamic"` |
+| `NEXT_PUBLIC_APP_URL` is not a valid URL | Env var set as literal string | Set it to the full URL, e.g. `https://docmind.vercel.app` |
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
+- [x] Hybrid search (vector + keyword RRF)
+- [x] Reranking with Gemini LLM judge
+- [x] Inline citations with clickable chips
+- [x] Streaming chat responses
+- [x] Evaluation harness with LLM judge
 - [ ] Support DOCX, TXT, and Markdown uploads
-- [ ] Streaming chat responses
-- [ ] Citation highlights in answers
 - [ ] Team workspaces and sharing
 - [ ] Usage analytics and quotas
 - [ ] Multi-model support
-- [ ] Reranking and hybrid search
 
 ---
 
-## 🤝 Contributing
-
-1. Fork the repository.
-2. Create a feature branch:
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. Commit your changes:
-   ```bash
-   git commit -m "feat: add amazing feature"
-   ```
-4. Push the branch:
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-5. Open a Pull Request.
-
----
-
-## 📄 License
+## License
 
 This project is licensed under the **MIT License**.
 
@@ -505,7 +672,7 @@ This project is licensed under the **MIT License**.
 
 ---
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 - [Next.js](https://nextjs.org/)
 - [Supabase](https://supabase.com/)
@@ -514,3 +681,4 @@ This project is licensed under the **MIT License**.
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Radix UI](https://www.radix-ui.com/)
 - [Lucide](https://lucide.dev/)
+```
